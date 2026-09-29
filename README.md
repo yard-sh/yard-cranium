@@ -105,22 +105,20 @@ asked, is accepted.
 Members are trusted editors: a bogus snapshot can do no more than deleting
 all the text, which any member can already do.
 
-**The handler decides who gets in, with a ticket.** Opening a document is
-`POST api/docs/:id/session`, then the upgrade `GET api/docs/:id/ws?ticket=…`.
-The ticket does three jobs:
+**The handler decides who gets in.** The socket route,
+`GET api/docs/:id/ws?since=<seq>`, does the following:
 
-- **Stops other sites' pages.** Every project under `yard.sh` counts as the
-  same site, so the session cookie would ride along on another project's
-  WebSocket handshake, and WebSockets have no CORS. Only this origin can read
-  the ticket.
-- **Gives a refused connection a real answer.** A refused upgrade reaches the
-  browser as a bare failure, while the session request can say 404 (gone,
-  stop).
-- **Tracks who has what open.** The session row records which documents a
-  person has open.
+- checks membership in the database,
+- notes that this person has the document open (a removal reads that),
+- strips any client-sent `X-Cranium-*` headers,
+- stamps trusted ones, and forwards the upgrade to the document's object.
 
-The handler re-checks membership on the upgrade, strips any client-sent
-`X-Cranium-*` headers, stamps trusted ones, and forwards to the object.
+The object trusts `X-Cranium-*` the way it trusts `X-Yard-*`. The edge honors
+the session only for requests from the project's own pages, so a socket
+opened from any other site arrives signed out and is turned away. A refused
+upgrade reaches the browser with no reason attached, so before reconnecting
+the client asks `GET api/docs/:id`. A 404 means the document was deleted or
+the person was removed, and it stops trying.
 
 **The first line is the title.**
 
@@ -144,8 +142,8 @@ The handler re-checks membership on the upgrade, strips any client-sent
 - **The invite link.** It is `…/app/?invite=<token>`, a random token separate
   from the workspace id. Resetting it kills every copy of the old link.
 - **Removal takes effect now.** The handler looks up the documents that person
-  opened in the last day (from the session rows; a socket can't outlive 24
-  hours), and each of those objects closes their sockets with 4003. The Remove
+  opened in the last day (a socket can't outlive 24 hours), and each of those
+  objects closes their sockets with 4003. The Remove
   dialog also resets the invite link by default, since the old one would let
   them straight back in.
 
@@ -233,7 +231,7 @@ Every line starts with `[cranium]` and is one event:
 - `compact.request|done|stale|too_big`
 - `flush`, `kick`
 
-**Not logged:** document text, titles, names, emails, invite tokens, tickets.
+**Not logged:** document text, titles, names, emails, invite tokens.
 Ids are cut to 8 characters.
 
 ## Usage and cost

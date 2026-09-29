@@ -10,8 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-// Writes always carry Content-Type: application/json, even with an empty
-// body: the service refuses anything else (see isJSON in _service.js).
+// Writes send a JSON body (an empty one when there's nothing to say).
 export async function api(path, { method = "GET", body } = {}) {
   const init = {
     method,

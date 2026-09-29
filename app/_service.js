@@ -35,8 +35,6 @@ const MAX_WORKSPACE_NAME = 60;
 const MAX_TITLE = 200;
 const MAX_PREVIEW = 400;
 
-// A ticket is a one-use pass for the next WebSocket upgrade (see openSession).
-const TICKET_MS = 60 * 1000;
 // A connection never outlives 24 hours, so a session opened longer ago than
 // this cannot still be holding one. The five minutes cover clock skew.
 const SESSION_WINDOW_MS = 24 * 60 * 60 * 1000 + 5 * 60 * 1000;
@@ -112,14 +110,6 @@ async function handleAPI(request, env, url) {
     return json({ error: "sign in to use Cranium", code: "signed_out" }, 401);
   }
 
-  // Every project under yard.sh is the same site as this one, so the session
-  // cookie rides along on a form posted from someone else's page. A
-  // cross-origin request cannot set this header without a CORS preflight,
-  // which this service never answers, so requiring it stops that cold.
-  if (method !== "GET" && method !== "HEAD" && !isJSON(request)) {
-    return json({ error: "send JSON with Content-Type: application/json", code: "json_required" }, 415);
-  }
-
   const me = await ensureUser(env, request.headers, user);
 
   // ["api", "workspaces", "<id>", "docs"]: the leading "api" is dropped.
@@ -184,8 +174,7 @@ async function handleAPI(request, env, url) {
       if (method === "DELETE") return deleteDoc(env, access);
       return methodNotAllowed();
     }
-    if (seg.length === 3 && seg[2] === "session" && method === "POST") return openSession(env, access);
-    if (seg.length === 3 && seg[2] === "ws" && method === "GET") return connectDoc(request, env, me, access, url);
+    if (seg.length === 3 && seg[2] === "ws" && method === "GET") return connectDoc(request, env, me, access);
     return json({ error: "not found", code: "not_found" }, 404);
   }
 
@@ -443,8 +432,7 @@ async function removeMember(request, env, access, target) {
 }
 
 // Finds the documents in this workspace the person opened within the last
-// day, closes their sockets there, and forgets those sessions (outstanding
-// tickets included).
+// day, closes their sockets there, and forgets those sessions.
 async function kick(env, workspaceId, user) {
   const { results } = await env.DB.prepare(
     "SELECT s.doc_id FROM doc_sessions s JOIN documents d ON d.id = s.doc_id" +
@@ -633,51 +621,26 @@ async function deleteDoc(env, access) {
 
 /* -------------------------------------------------------------- realtime */
 
-// Opening a document is two steps. This one hands out a ticket, a one-use
-// pass for the WebSocket upgrade that must follow within a minute. It exists
-// for three reasons:
-//   - A WebSocket handshake carries cookies but has no CORS, and every
-//     project under yard.sh is the same site as this one. Only a page on
-//     this origin can read the ticket, so only this app can open a socket.
-//   - A refused upgrade reaches the browser as a bare failure. This request
-//     answers first, with a status the client can act on (404: gone, stop).
-//   - The row it writes is how a removal finds this person's open documents.
-async function openSession(env, access) {
-  const ticket = newToken();
-  const now = Date.now();
-  await env.DB.prepare(
-    "INSERT INTO doc_sessions (doc_id, user_id, ticket, ticket_expires, opened_at) VALUES (?1, ?2, ?3, ?4, ?5)" +
-      " ON CONFLICT(doc_id, user_id) DO UPDATE SET ticket = excluded.ticket," +
-      " ticket_expires = excluded.ticket_expires, opened_at = excluded.opened_at",
-  )
-    .bind(access.doc.id, access.user, ticket, now + TICKET_MS, now)
-    .run();
-  return json({ ticket, expires_in: TICKET_MS / 1000 });
-}
-
 // The realtime route. docAccess already confirmed membership on this very
-// request (so a removal after the ticket was issued still keeps them out);
-// what's left is spending the ticket and forwarding the upgrade. The
-// X-Cranium-* headers are set here, after stripping anything a client sent,
-// so the object can trust them the way it trusts X-Yard-*.
-async function connectDoc(request, env, me, access, url) {
+// request, so all that's left is noting who has this document open (a
+// removal reads that to find the sockets it must close) and forwarding the
+// upgrade. The edge only signs in sockets opened from this project's own
+// pages, so another site can't open one as a signed-in visitor.
+//
+// The X-Cranium-* headers are set here, after stripping anything a client
+// sent, so the object can trust them the way it trusts X-Yard-*.
+async function connectDoc(request, env, me, access) {
   const { doc, user } = access;
   if (request.headers.get("Upgrade") !== "websocket") {
     return json({ error: "expected a WebSocket", code: "upgrade_required" }, 426);
   }
-  const ticket = url.searchParams.get("ticket") || "";
-  const spent = TOKEN_RE.test(ticket)
-    ? await env.DB.prepare(
-        "UPDATE doc_sessions SET ticket = NULL" +
-          " WHERE doc_id = ?1 AND user_id = ?2 AND ticket = ?3 AND ticket_expires > ?4 RETURNING doc_id",
-      )
-        .bind(doc.id, user, ticket, Date.now())
-        .first()
-    : null;
-  if (!spent) {
-    log("ws.rejected", { doc: shortId(doc.id), user: shortId(user), reason: "ticket" });
-    return json({ error: "that pass expired; try again", code: "ticket_invalid" }, 403);
-  }
+  const now = Date.now();
+  await env.DB.prepare(
+    "INSERT INTO doc_sessions (doc_id, user_id, opened_at) VALUES (?1, ?2, ?3)" +
+      " ON CONFLICT(doc_id, user_id) DO UPDATE SET opened_at = excluded.opened_at",
+  )
+    .bind(doc.id, user, now)
+    .run();
 
   const headers = new Headers(request.headers);
   for (const key of [...headers.keys()]) {
@@ -1189,10 +1152,6 @@ function send(ws, event) {
 
 /* ------------------------------------------------------------ validation */
 
-function isJSON(request) {
-  return (request.headers.get("Content-Type") || "").toLowerCase().startsWith("application/json");
-}
-
 function isBase64(value, max) {
   return typeof value === "string" && value.length <= max && value.length % 4 === 0 && B64_RE.test(value);
 }
@@ -1265,7 +1224,7 @@ function changed(result) {
 // starts with [cranium] and is one event, so it greps cleanly:
 //   yard service logs | grep 'compact.'
 //
-// Not logged: document text, titles, names, emails, invite tokens, tickets.
+// Not logged: document text, titles, names, emails, invite tokens.
 // Ids are cut to 8 characters: enough to correlate lines within a session,
 // not a lasting identifier sitting in a log store.
 
@@ -1285,8 +1244,7 @@ function shortId(id) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Ids shortened, invite tokens hidden. The query string (which carries the
-// socket ticket) is never passed in.
+// Ids shortened, invite tokens hidden. The query string is never passed in.
 function redactPath(pathname) {
   const parts = pathname.split("/");
   return parts

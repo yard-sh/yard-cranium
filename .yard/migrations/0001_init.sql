@@ -61,16 +61,13 @@ CREATE INDEX IF NOT EXISTS idx_documents_updated ON documents (workspace_id, upd
 
 CREATE INDEX IF NOT EXISTS idx_documents_created ON documents (workspace_id, created_at);
 
--- One row per (document, person), refreshed each time they open it. ticket
--- is a one-use pass for the next WebSocket upgrade; opened_at is how a
--- removal finds the documents someone may still have open (a connection
--- never outlives 24 hours).
+-- One row per (document, person), refreshed each time they open it. A
+-- removal reads opened_at to find the documents someone may still have
+-- open (a connection never outlives 24 hours) and closes their sockets.
 CREATE TABLE IF NOT EXISTS doc_sessions (
-  doc_id         TEXT NOT NULL,
-  user_id        TEXT NOT NULL,
-  ticket         TEXT,
-  ticket_expires INTEGER NOT NULL DEFAULT 0,
-  opened_at      INTEGER NOT NULL DEFAULT 0,
+  doc_id    TEXT NOT NULL,
+  user_id   TEXT NOT NULL,
+  opened_at INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (doc_id, user_id)
 );
 

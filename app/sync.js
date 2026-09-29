@@ -241,27 +241,28 @@ export function connectDoc(docId, ydoc, awareness, handlers = {}) {
 
   /* --------------------------------------------------------- connecting */
 
-  // A ticket first: it doubles as the access check, so a document that was
+  // The first connection goes straight to the socket: openDoc has just
+  // checked the document. A reconnect asks first, because a refused upgrade
+  // reaches the browser with no reason attached: a document that was
   // deleted, or a workspace this person was removed from, answers 404 here
-  // instead of failing the upgrade with nothing to say.
+  // instead, and there is nothing to reconnect to.
   async function connect() {
     if (stopped) return;
-    setStatus(attempt === 0 && !head ? "connecting" : "reconnecting");
-    let ticket;
-    try {
-      ({ ticket } = await api(`api/docs/${encodeURIComponent(docId)}/session`, { method: "POST" }));
-    } catch (err) {
+    const again = attempt > 0 || head > 0;
+    setStatus(again ? "reconnecting" : "connecting");
+    if (again) {
+      try {
+        await api(`api/docs/${encodeURIComponent(docId)}`);
+      } catch (err) {
+        if (stopped) return;
+        if (err.status === 404) return stop("gone");
+        if (err.status === 401) return location.reload();
+        return retry();
+      }
       if (stopped) return;
-      if (err.status === 404) return stop("gone");
-      if (err.status === 401) return location.reload();
-      return retry();
     }
-    if (stopped) return;
 
-    const url = new URL(
-      `api/docs/${encodeURIComponent(docId)}/ws?ticket=${encodeURIComponent(ticket)}&since=${head}`,
-      location.href,
-    );
+    const url = new URL(`api/docs/${encodeURIComponent(docId)}/ws?since=${head}`, location.href);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
     ws = socket;
