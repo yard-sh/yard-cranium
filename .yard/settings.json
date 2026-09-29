@@ -1,0 +1,41 @@
+{
+  "version": 7,
+  "project_slug": "cranium",
+  "ignore_files": [],
+  "services": [
+    {
+      "dir": "app",
+      "name": "app",
+      "url": "/app",
+      "access": "authenticated",
+      "database_access": true,
+      "objects": [
+        {
+          "class": "Doc",
+          "binding": "DOCS"
+        }
+      ]
+    }
+  ],
+  "landing_page": {
+    "type": "custom",
+    "dir": ".yard/landing-page"
+  },
+  "pricing": {
+    "tiers": [
+      {
+        "name": "Free",
+        "price_cents": 0,
+        "is_default": true,
+        "pricing_model": "one_time",
+        "description": "Every feature, free for good",
+        "features": [
+          "Real-time co-editing with named cursors",
+          "Workspaces with one invite link",
+          "Checklists, headings and code blocks",
+          "Light and dark"
+        ]
+      }
+    ]
+  }
+}
