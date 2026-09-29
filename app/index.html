@@ -90,6 +90,7 @@
       <symbol id="i-link" viewBox="0 0 24 24">
         <path d="M10 14a4 4 0 0 0 5.7 0l3.2-3.2a4 4 0 0 0-5.7-5.7L12 6.3M14 10a4 4 0 0 0-5.7 0l-3.2 3.2a4 4 0 0 0 5.7 5.7l1.2-1.2" />
       </symbol>
+      <symbol id="i-clear" viewBox="0 0 24 24"><path d="M5 5h11M10.5 5 7 19M15 14l5 5M20 14l-5 5" /></symbol>
       <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" /></symbol>
       <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" /></symbol>
     </svg>
@@ -247,55 +248,147 @@
 
         <!-- One document. doc.js fills this in and wires it up. -->
         <section class="view docview" id="view-doc" hidden>
-          <header class="dochead">
-            <a class="dochead__back" id="doc-back" href="#/">
-              <svg class="icon"><use href="#i-back" /></svg>
-              <span id="doc-back-label">Documents</span>
-            </a>
-            <div class="dochead__title" id="doc-title"></div>
-            <div class="stack" id="doc-peers" aria-label="Who's here"></div>
-            <span class="status mono" id="doc-status" data-state="connecting">Connecting</span>
-          </header>
-          <div class="toolbar" id="toolbar" role="toolbar" aria-label="Formatting">
-            <button class="iconbtn" type="button" data-cmd="h2" title="Heading" aria-label="Heading"><b>H2</b></button>
-            <button class="iconbtn" type="button" data-cmd="h3" title="Subheading" aria-label="Subheading"><b>H3</b></button>
-            <span class="toolbar__sep"></span>
-            <button class="iconbtn" type="button" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button>
-            <button class="iconbtn" type="button" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic">
-              <svg class="icon"><use href="#i-italic" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="strike" title="Strikethrough" aria-label="Strikethrough">
-              <svg class="icon"><use href="#i-strike" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="code" title="Inline code" aria-label="Inline code">
-              <svg class="icon"><use href="#i-code" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="link" title="Link" aria-label="Link">
-              <svg class="icon"><use href="#i-link" /></svg>
-            </button>
-            <span class="toolbar__sep"></span>
-            <button class="iconbtn" type="button" data-cmd="bullet" title="Bulleted list" aria-label="Bulleted list">
-              <svg class="icon"><use href="#i-ul" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="ordered" title="Numbered list" aria-label="Numbered list">
-              <svg class="icon"><use href="#i-ol" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="task" title="Checklist" aria-label="Checklist">
-              <svg class="icon"><use href="#i-task" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="quote" title="Quote" aria-label="Quote">
-              <svg class="icon"><use href="#i-quote" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="codeblock" title="Code block" aria-label="Code block">
-              <svg class="icon"><use href="#i-codeblock" /></svg>
-            </button>
-            <span class="toolbar__sep"></span>
-            <button class="iconbtn" type="button" data-cmd="undo" title="Undo your last change (Ctrl+Z)" aria-label="Undo">
-              <svg class="icon"><use href="#i-undo" /></svg>
-            </button>
-            <button class="iconbtn" type="button" data-cmd="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">
-              <svg class="icon"><use href="#i-redo" /></svg>
-            </button>
+          <div class="docchrome" id="doc-chrome">
+            <header class="dochead">
+              <div class="dochead__side">
+                <a class="dochead__back" id="doc-back" href="#/">
+                  <svg class="icon"><use href="#i-back" /></svg>
+                  <span id="doc-back-label">Documents</span>
+                </a>
+              </div>
+              <button class="dochead__title" id="doc-title" type="button" title="Rename" disabled></button>
+              <input
+                class="dochead__rename"
+                id="doc-rename"
+                type="text"
+                maxlength="200"
+                aria-label="Document name"
+                autocomplete="off"
+                hidden
+              />
+              <div class="dochead__side dochead__side--end">
+                <div class="stack" id="doc-peers" aria-label="Who's here"></div>
+                <span class="status mono" id="doc-status" data-state="connecting">Connecting</span>
+              </div>
+            </header>
+            <nav class="menubar" id="menubar" aria-label="Document">
+              <div class="menubar__entry">
+                <button class="menubar__btn" type="button" aria-haspopup="menu" aria-expanded="false" data-menu="file">File</button>
+                <div class="menu menubar__menu" id="menu-file" role="menu" hidden>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="rename"><span class="menu__main">Rename</span></button>
+                  <div class="menu__rule" role="separator"></div>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="import"><span class="menu__main">Import Markdown…</span></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="download"><span class="menu__main">Download as Markdown (.md)</span></button>
+                </div>
+              </div>
+              <div class="menubar__entry">
+                <button class="menubar__btn" type="button" aria-haspopup="menu" aria-expanded="false" data-menu="edit">Edit</button>
+                <div class="menu menubar__menu" id="menu-edit" role="menu" hidden>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="undo"><span class="menu__main">Undo</span><kbd class="menu__key" data-keys="Mod-z"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="redo"><span class="menu__main">Redo</span><kbd class="menu__key" data-keys="Mod-Shift-z"></kbd></button>
+                  <div class="menu__rule" role="separator"></div>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="selectall"><span class="menu__main">Select all</span><kbd class="menu__key" data-keys="Mod-a"></kbd></button>
+                </div>
+              </div>
+              <div class="menubar__entry">
+                <button class="menubar__btn" type="button" aria-haspopup="menu" aria-expanded="false" data-menu="view">View</button>
+                <div class="menu menubar__menu" id="menu-view" role="menu" hidden>
+                  <button class="menu__item" type="button" role="menuitemcheckbox" aria-checked="false" data-cmd="source"><span class="menu__main">Markdown source</span><svg class="icon menu__tick"><use href="#i-check" /></svg></button>
+                </div>
+              </div>
+              <div class="menubar__entry">
+                <button class="menubar__btn" type="button" aria-haspopup="menu" aria-expanded="false" data-menu="insert">Insert</button>
+                <div class="menu menubar__menu" id="menu-insert" role="menu" hidden>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="link"><span class="menu__main">Link</span><kbd class="menu__key" data-keys="Mod-k"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="hr"><span class="menu__main">Horizontal line</span></button>
+                  <div class="menu__rule" role="separator"></div>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="task"><span class="menu__main">Checklist</span><kbd class="menu__key" data-keys="Mod-Shift-9"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="quote"><span class="menu__main">Quote</span></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="codeblock"><span class="menu__main">Code block</span><kbd class="menu__key" data-keys="Mod-Alt-c"></kbd></button>
+                </div>
+              </div>
+              <div class="menubar__entry">
+                <button class="menubar__btn" type="button" aria-haspopup="menu" aria-expanded="false" data-menu="format">Format</button>
+                <div class="menu menubar__menu" id="menu-format" role="menu" hidden>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="p"><span class="menu__main">Normal text</span><kbd class="menu__key" data-keys="Mod-Alt-0"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="h1"><span class="menu__main">Heading 1</span><kbd class="menu__key" data-keys="Mod-Alt-1"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="h2"><span class="menu__main">Heading 2</span><kbd class="menu__key" data-keys="Mod-Alt-2"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="h3"><span class="menu__main">Heading 3</span><kbd class="menu__key" data-keys="Mod-Alt-3"></kbd></button>
+                  <div class="menu__rule" role="separator"></div>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="bold"><span class="menu__main">Bold</span><kbd class="menu__key" data-keys="Mod-b"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="italic"><span class="menu__main">Italic</span><kbd class="menu__key" data-keys="Mod-i"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="strike"><span class="menu__main">Strikethrough</span><kbd class="menu__key" data-keys="Alt-Shift-5"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="code"><span class="menu__main">Code</span><kbd class="menu__key" data-keys="Mod-e"></kbd></button>
+                  <div class="menu__rule" role="separator"></div>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="bullet"><span class="menu__main">Bulleted list</span><kbd class="menu__key" data-keys="Mod-Shift-8"></kbd></button>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="ordered"><span class="menu__main">Numbered list</span><kbd class="menu__key" data-keys="Mod-Shift-7"></kbd></button>
+                  <div class="menu__rule" role="separator"></div>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="clear"><span class="menu__main">Clear formatting</span><kbd class="menu__key" data-keys="Mod-\"></kbd></button>
+                </div>
+              </div>
+              <div class="menubar__entry">
+                <button class="menubar__btn" type="button" aria-haspopup="menu" aria-expanded="false" data-menu="tools">Tools</button>
+                <div class="menu menubar__menu" id="menu-tools" role="menu" hidden>
+                  <button class="menu__item" type="button" role="menuitem" data-cmd="wordcount"><span class="menu__main">Word count</span><kbd class="menu__key" data-keys="Mod-Shift-c"></kbd></button>
+                </div>
+              </div>
+            </nav>
+            <div class="toolbar" id="toolbar" role="toolbar" aria-label="Formatting">
+              <button class="iconbtn" type="button" data-cmd="undo" aria-label="Undo" data-tip="Undo" data-keys="Mod-z">
+                <svg class="icon"><use href="#i-undo" /></svg>
+              </button>
+              <button class="iconbtn" type="button" data-cmd="redo" aria-label="Redo" data-tip="Redo" data-keys="Mod-Shift-z">
+                <svg class="icon"><use href="#i-redo" /></svg>
+              </button>
+              <span class="toolbar__sep"></span>
+              <select class="stylepick" id="style-pick" aria-label="Text style" title="Text style">
+                <option value="p">Normal text</option>
+                <option value="h1">Heading 1</option>
+                <option value="h2">Heading 2</option>
+                <option value="h3">Heading 3</option>
+                <option value="title" hidden disabled>Title</option>
+                <option value="codeblock" hidden disabled>Code block</option>
+                <option value="" hidden disabled></option>
+              </select>
+              <span class="toolbar__sep"></span>
+              <button class="iconbtn" type="button" data-cmd="bold" aria-label="Bold" data-tip="Bold" data-keys="Mod-b">
+                <b>B</b>
+              </button>
+              <button class="iconbtn" type="button" data-cmd="italic" aria-label="Italic" data-tip="Italic" data-keys="Mod-i">
+                <svg class="icon"><use href="#i-italic" /></svg>
+              </button>
+              <button class="iconbtn" type="button" data-cmd="strike" aria-label="Strikethrough" data-tip="Strikethrough" data-keys="Alt-Shift-5">
+                <svg class="icon"><use href="#i-strike" /></svg>
+              </button>
+              <button class="iconbtn" type="button" data-cmd="code" aria-label="Code" data-tip="Code" data-keys="Mod-e">
+                <svg class="icon"><use href="#i-code" /></svg>
+              </button>
+              <span class="toolbar__sep"></span>
+              <button class="iconbtn" type="button" data-cmd="link" aria-label="Insert link" data-tip="Insert link" data-keys="Mod-k">
+                <svg class="icon"><use href="#i-link" /></svg>
+              </button>
+              <span class="toolbar__sep"></span>
+              <button class="iconbtn" type="button" data-cmd="bullet" aria-label="Bulleted list" data-tip="Bulleted list" data-keys="Mod-Shift-8">
+                <svg class="icon"><use href="#i-ul" /></svg>
+              </button>
+              <button class="iconbtn" type="button" data-cmd="ordered" aria-label="Numbered list" data-tip="Numbered list" data-keys="Mod-Shift-7">
+                <svg class="icon"><use href="#i-ol" /></svg>
+              </button>
+              <button class="iconbtn" type="button" data-cmd="task" aria-label="Checklist" data-tip="Checklist" data-keys="Mod-Shift-9">
+                <svg class="icon"><use href="#i-task" /></svg>
+              </button>
+              <span class="toolbar__sep"></span>
+              <button class="iconbtn" type="button" data-cmd="quote" aria-label="Quote" data-tip="Quote">
+                <svg class="icon"><use href="#i-quote" /></svg>
+              </button>
+              <button class="iconbtn" type="button" data-cmd="codeblock" aria-label="Code block" data-tip="Code block" data-keys="Mod-Alt-c">
+                <svg class="icon"><use href="#i-codeblock" /></svg>
+              </button>
+              <span class="toolbar__sep"></span>
+              <button class="iconbtn" type="button" data-cmd="clear" aria-label="Clear formatting" data-tip="Clear formatting" data-keys="Mod-\">
+                <svg class="icon"><use href="#i-clear" /></svg>
+              </button>
+            </div>
           </div>
           <div class="banner" id="doc-banner" hidden>
             <p id="doc-banner-text"></p>
@@ -307,7 +400,16 @@
               <i></i><i></i><i></i><i></i>
             </div>
             <div id="editor"></div>
+            <!-- View > Markdown source. doc.js swaps it in for the editor. -->
+            <div class="source" id="doc-source" hidden>
+              <div class="source__bar">
+                <span class="mono muted">Markdown source</span>
+                <button class="btn btn--ink btn--sm" id="doc-source-done" type="button">Done</button>
+              </div>
+              <textarea class="source__text" id="doc-source-text" spellcheck="false" aria-label="Markdown source"></textarea>
+            </div>
           </article>
+          <input id="doc-import" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden />
         </section>
       </main>
     </div>
@@ -357,6 +459,21 @@
         <div class="dlg__actions">
           <button class="btn btn--ghost" value="cancel">Not now</button>
           <button class="btn btn--tomato" value="ok">Join workspace</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="dlg" id="dlg-count">
+      <form class="dlg__form" method="dialog">
+        <h2 class="dlg__title">Word count</h2>
+        <table class="counts">
+          <thead>
+            <tr><th></th><th class="mono muted" id="count-sel-head">Selection</th><th class="mono muted">Document</th></tr>
+          </thead>
+          <tbody id="count-rows"></tbody>
+        </table>
+        <div class="dlg__actions">
+          <button class="btn btn--ink" value="ok">Close</button>
         </div>
       </form>
     </dialog>

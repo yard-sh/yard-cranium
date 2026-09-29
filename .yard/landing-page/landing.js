@@ -141,7 +141,6 @@
     );
 
     // The rest of the page greets them too.
-    document.getElementById("greet").textContent = "Welcome back, " + who.name;
     document.getElementById("heroCta").textContent = "Back to your documents";
     document.getElementById("planCta").textContent = "Open Cranium";
     document.getElementById("closerCta").textContent = "Back to your documents";

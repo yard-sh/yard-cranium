@@ -38,7 +38,8 @@ Once it's live:
       _service.js         the whole backend: the fetch handler and the Doc object
       index.html          app shell: sidebar, views, dialogs
       app.js              boot, routing, workspace switcher, document grid, members, invites
-      doc.js              one open document: the editor, toolbar, presence, title and preview
+      doc.js              one open document: connection, seed, presence, title and preview
+      editing.js          the editor: schema, menu bar, toolbar, shortcuts, Markdown
       sync.js             the connection between a Y.Doc and its object
       api.js · ui.js      fetch wrapper; DOM helpers, dialogs, colours
       styles.css          paper & graphite tokens, light and dark
@@ -120,15 +121,31 @@ upgrade reaches the browser with no reason attached, so before reconnecting
 the client asks `GET api/docs/:id`. A 404 means the document was deleted or
 the person was removed, and it stops trying.
 
-**The first line is the title.**
+**The first line is the title, until someone renames it.**
 
-- The editor's schema is `title block*`, and a frozen seed update gives every
-  new document an empty title and paragraph. Any number of tabs applying the
-  seed make one copy.
+- A document is `block+`: no separate title line. Its title is its first
+  line of text, or the name set by clicking the title in the top bar (kept
+  in the Y.Doc, so a rename reaches everyone like any other edit).
+- A frozen seed update gives every new document one empty paragraph. Any
+  number of tabs applying the seed make one copy. Documents from before this
+  started from a different seed, with a title line; `seed()` in `doc.js`
+  applies whichever one a document's edits hang off.
 - Tabs that are editing report the title and a preview.
 - The object writes them to the `documents` row from a 5-second alarm: one
   database write per burst, not per keystroke. That row is what the grid
   shows and sorts by.
+
+**Everything stays Markdown.** The editor works like Google Docs (menu bar,
+toolbar with a text-style picker, Docs keyboard shortcuts) but only offers
+formatting Markdown can express: headings 1 to 3, bold, italic,
+strikethrough, code, links, lists, checklists, quotes, code blocks and
+horizontal lines. Markdown typed or pasted as text turns into formatting.
+File > Download saves a `.md`, File > Import inserts one at the cursor, and
+View > Markdown source edits the raw text. Leaving the source view applies
+only the part that changed, so collaborators' edits elsewhere survive.
+Underline isn't Markdown: nothing creates it, but the mark stays in the
+schema, because y-tiptap deletes text carrying a mark the schema doesn't
+know.
 
 **Workspaces, invites, removal.**
 

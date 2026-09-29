@@ -107,23 +107,11 @@ a {
   padding: 0 28px;
 }
 
-.mono,
-.kicker,
-.fine {
+.mono {
   font-family: var(--mono);
   font-size: 11.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.kicker {
-  margin: 0 0 14px;
-  color: var(--tomato);
-}
-
-.fine {
-  margin: 18px 0 0;
-  color: var(--muted);
 }
 
 .display {
@@ -567,6 +555,11 @@ a {
   border-left: 3px solid var(--tomato);
   font: italic 20px/1.35 var(--serif);
   color: var(--ink-2);
+}
+
+/* No bar until someone starts the quote. */
+.demo blockquote:has(.typed:empty) {
+  border-left-color: transparent;
 }
 
 /* The demo's collaborators: a pole and a pennant, same as the app. */

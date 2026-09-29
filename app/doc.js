@@ -1,68 +1,34 @@
-// One open document: a Y.Doc, its connection (sync.js), and a TipTap editor
-// bound to it. Loaded on demand by app.js, so the document grid never
+// One open document: a Y.Doc, its connection (sync.js), its title, and the
+// editor bound to it (editing.js). Loaded on demand by app.js, so the document grid never
 // downloads the editor bundle.
 
-import {
-  Editor,
-  Node,
-  mergeAttributes,
-  Document,
-  StarterKit,
-  TaskList,
-  TaskItem,
-  Placeholder,
-  Collaboration,
-  CollaborationCaret,
-  Y,
-  Awareness,
-  fromBase64,
-} from "./vendor/editor.js";
+import { Y, Awareness, fromBase64 } from "./vendor/editor.js";
 import { connectDoc, REMOTE, SEED } from "./sync.js";
 import { api } from "./api.js";
-import { $, el, avatar, colorOf, toast, promptDialog } from "./ui.js";
+import { createEditor, bindChrome, resetChrome } from "./editing.js";
+import { $, el, avatar } from "./ui.js";
 
-// FROZEN. Every document starts from these exact bytes: an empty title and
-// an empty paragraph, written by Yjs client 0 at clocks 0 and 1. Yjs names
-// content by (client, clock), so any number of tabs applying this get one
-// copy, even when two people open a brand-new document at the same moment.
-// It also means the editor never sees an empty document, which the title
-// schema below does not allow. Changing these bytes would add a second
-// title to every document that already exists.
-const SEED_UPDATE = "AQIAAAcBB2RlZmF1bHQDBXRpdGxlhwAAAwlwYXJhZ3JhcGgA";
+// FROZEN, both of them. A document starts from one of these exact byte
+// strings. Yjs names content by (client, clock), so any number of tabs
+// applying the same seed get one copy, even when two people open a
+// brand-new document at the same moment. The seed is never sent: every tab
+// applies it locally (see seed below), and every edit hangs off it.
+//
+// SEED_UPDATE is one empty paragraph from client 1 at clock 0.
+// LEGACY_SEED is an empty title and an empty paragraph from client 0: what
+// documents started from when the first line was a separate title.
+// Changing either would duplicate or orphan the content of every document
+// that started from it.
+const SEED_UPDATE = "AQEBAAcBB2RlZmF1bHQDCXBhcmFncmFwaAA=";
+const LEGACY_SEED = "AQIAAAcBB2RlZmF1bHQDBXRpdGxlhwAAAwlwYXJhZ3JhcGgA";
+const SEED_CLIENT = 1;
+const LEGACY_CLIENT = 0;
 
-// The first line of every document is its title: a node of its own, so no
-// toolbar button or markdown shortcut can turn it into something else.
-const Title = Node.create({
-  name: "title",
-  content: "text*",
-  marks: "",
-  defining: true,
-  parseHTML() {
-    return [{ tag: "h1.doc-title", priority: 60 }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["h1", mergeAttributes(HTMLAttributes, { class: "doc-title" }), 0];
-  },
-  // Enter at the end of the title steps into the empty line below it (every
-  // document starts with one) instead of stacking another above it.
-  addKeyboardShortcuts() {
-    return {
-      Enter: ({ editor }) => {
-        const { $from, empty } = editor.state.selection;
-        if ($from.parent.type.name !== "title" || !empty) return false;
-        if ($from.parentOffset !== $from.parent.content.size) return false;
-        const after = $from.after();
-        const next = editor.state.doc.nodeAt(after);
-        if (!next || !next.isTextblock || next.content.size) return false;
-        return editor.commands.setTextSelection(after + 1);
-      },
-    };
-  },
-});
+// Where a renamed document keeps its name. Unset, the title is the first
+// line of text.
+const NAME_KEY = "title";
 
-const Page = Document.extend({ content: "title block*" });
-
-const MAX_PASTE = 512 * 1024;
+const MAX_TITLE = 200; // the object's limit too
 const META_DEBOUNCE_MS = 1500;
 const LOCAL_EDIT_WINDOW_MS = 30 * 1000;
 
@@ -102,7 +68,7 @@ export async function openDoc(docId, { signal, onMeta, onWorkspace } = {}) {
   showTitle(meta.title);
 
   const ydoc = new Y.Doc();
-  Y.applyUpdate(ydoc, fromBase64(SEED_UPDATE), SEED);
+  const names = ydoc.getMap("meta");
   const awareness = new Awareness(ydoc);
 
   let editor = null;
@@ -131,7 +97,7 @@ export async function openDoc(docId, { signal, onMeta, onWorkspace } = {}) {
     onPeers: live(renderPeers),
     onStop: live((reason) => {
       if (editor) editor.setEditable(false);
-      $("toolbar").inert = true;
+      view.stop();
       $("doc-banner-text").textContent = STOP_TEXT[reason] || "This document closed.";
       $("doc-banner-reload").hidden = reason === "removed" || reason === "deleted" || reason === "gone";
       $("doc-banner").hidden = false;
@@ -155,74 +121,47 @@ export async function openDoc(docId, { signal, onMeta, onWorkspace } = {}) {
     return { destroy: () => sync.close() };
   }
   if (signal && signal.aborted) return sync.close(), null;
+  seed(ydoc);
 
   // Created only after the first sync, so a keystroke can never land in
   // a document that is still loading.
-  editor = new Editor({
-    element: $("editor"),
-    extensions: [
-      Page,
-      Title,
-      StarterKit.configure({
-        document: false,
-        // Collaboration brings its own undo, which only undoes your edits.
-        undoRedo: false,
-        // These two write to the document on their own after any change,
-        // remote ones included: every open tab would add its own copy.
-        trailingNode: false,
-        link: { openOnClick: false, autolink: false, defaultProtocol: "https" },
-        heading: { levels: [2, 3] },
-      }),
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      Placeholder.configure({
-        includeChildren: false,
-        showOnlyCurrent: false,
-        placeholder: ({ node, pos, editor: ed }) => {
-          if (node.type.name === "title") return "Untitled";
-          const first = ed.state.doc.firstChild;
-          return ed.state.doc.childCount <= 2 && pos === first.nodeSize ? "Start writing…" : "";
-        },
-      }),
-      Collaboration.configure({ document: ydoc }),
-      CollaborationCaret.configure({
-        provider: { awareness },
-        user: { name: you.name, color: colorOf(you.user_id) },
-        render: flagCaret,
-        selectionRender: (user) => ({ style: `background-color: ${user.color}2e` }),
-      }),
-    ],
-    editorProps: {
-      attributes: { class: "prose", spellcheck: "true", "aria-label": "Document" },
-      handlePaste: (_view, event) => tooBig(event.clipboardData),
-      handleDrop: (_view, event) => tooBig(event.dataTransfer),
-    },
-  });
+  editor = createEditor({ element: $("editor"), ydoc, awareness, you });
 
   $("doc-sheet").classList.remove("is-loading");
   $("doc-loading").hidden = true;
-  view.bindToolbar(editor);
 
   // Title and preview: shown here straight away, sent to the object (which
-  // writes them to the grid) when this tab has been editing.
+  // writes them to the grid) when this tab has been editing. A rename is a
+  // change to the Y.Doc like any other, so it reaches everyone's top bar
+  // the same way typing does.
+  const titleNow = () => names.get(NAME_KEY) || firstLine(editor.state.doc);
   const reportMeta = () => {
     metaTimer = 0;
-    const next = deriveMeta(editor.state.doc);
+    const next = deriveMeta(editor.state.doc, names.get(NAME_KEY));
     showTitle(next.title);
     if (onMeta) onMeta(docId, next);
     if (Date.now() - lastLocalEdit > LOCAL_EDIT_WINDOW_MS) return;
     if (next.title === lastSent.title && next.preview === lastSent.preview) return;
     if (sync.sendMeta(next)) lastSent = next;
   };
-  editor.on("update", () => {
+  const changed = () => {
     clearTimeout(metaTimer);
     metaTimer = setTimeout(reportMeta, META_DEBOUNCE_MS);
-    showTitle(editor.state.doc.firstChild.textContent);
+    showTitle(titleNow());
+  };
+  editor.on("update", changed);
+  names.observe(changed);
+  showTitle(titleNow());
+  const rename = view.bindRename({
+    current: titleNow,
+    fallback: () => firstLine(editor.state.doc),
+    rename: (name) => (name ? names.set(NAME_KEY, name) : names.delete(NAME_KEY)),
+    done: () => editor.commands.focus(),
   });
-  showTitle(editor.state.doc.firstChild.textContent);
+  view.bindChrome(editor, { rename, title: titleNow });
 
-  // A new, empty document opens with the cursor in the title.
-  if (!editor.state.doc.firstChild.textContent) editor.commands.focus("start");
+  // A new, empty document opens with the cursor on its first line.
+  if (!editor.state.doc.textContent) editor.commands.focus("start");
 
   return {
     destroy() {
@@ -238,37 +177,84 @@ export async function openDoc(docId, { signal, onMeta, onWorkspace } = {}) {
 
 /* ------------------------------------------------------------------ view */
 
-// Clears whatever the last document left behind and returns the toolbar
-// binding for this one.
+// Clears whatever the last document left behind and returns the bindings
+// for this one: the editing chrome and the rename box.
 function resetView() {
   $("editor").replaceChildren();
   $("doc-sheet").classList.add("is-loading");
   $("doc-loading").hidden = false;
   $("doc-banner").hidden = true;
   $("doc-peers").replaceChildren();
-  $("toolbar").inert = false;
+  resetChrome();
   $("doc-status").dataset.state = "connecting";
   $("doc-status").textContent = STATUS_TEXT.connecting;
   showTitle("");
+  $("doc-title").hidden = false;
+  $("doc-title").disabled = true;
+  $("doc-rename").hidden = true;
 
-  let unbind = () => {};
+  let chrome = null;
+  let unrename = () => {};
   return {
-    bindToolbar(editor) {
-      const toolbar = $("toolbar");
-      const onClick = (event) => {
-        const button = event.target.closest("[data-cmd]");
-        if (button) run(editor, button.dataset.cmd);
-      };
-      const refresh = () => paintToolbar(editor);
-      toolbar.addEventListener("click", onClick);
-      editor.on("transaction", refresh);
-      refresh();
-      unbind = () => {
-        toolbar.removeEventListener("click", onClick);
-        editor.off("transaction", refresh);
-      };
+    bindChrome(editor, options) {
+      chrome = bindChrome(editor, options);
     },
-    unbind: () => unbind(),
+    // The name in the top bar turns into a text box on click (or File >
+    // Rename, which calls what this returns). Enter or clicking away saves,
+    // Escape doesn't, and saving an empty name goes back to the first line.
+    bindRename({ current, rename, fallback, done }) {
+      const button = $("doc-title");
+      const input = $("doc-rename");
+      const abort = new AbortController();
+      const on = { signal: abort.signal };
+      let editing = false;
+      const open = () => {
+        editing = true;
+        input.value = current();
+        input.placeholder = fallback() || "Untitled";
+        button.hidden = true;
+        input.hidden = false;
+        input.focus();
+        input.select();
+      };
+      const close = (save) => {
+        if (!editing) return false;
+        editing = false;
+        input.hidden = true;
+        button.hidden = false;
+        const name = input.value.replace(/\s+/g, " ").trim().slice(0, MAX_TITLE);
+        if (save && name !== current()) rename(name);
+        return true;
+      };
+      button.disabled = false;
+      button.addEventListener("click", open, on);
+      input.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.isComposing || (event.key !== "Enter" && event.key !== "Escape")) return;
+          event.preventDefault();
+          if (close(event.key === "Enter")) done();
+        },
+        on,
+      );
+      input.addEventListener("blur", () => close(true), on);
+      unrename = () => {
+        abort.abort();
+        close(false);
+        button.disabled = true;
+      };
+      return () => !button.disabled && open();
+    },
+    // The document closed under this tab: nothing edits it any more.
+    stop() {
+      unrename();
+      if (chrome) chrome.stop();
+    },
+    unbind() {
+      unrename();
+      if (chrome) chrome.unbind();
+      chrome = null;
+    },
   };
 }
 
@@ -295,126 +281,52 @@ function renderPeers(peers) {
   stack.title = faces.length ? faces.map((f) => f.title).join(", ") + " here now" : "";
 }
 
-// A collaborator's caret: a thin pole and a pennant with their name. The
-// name is drawn by CSS (::after, from data-name), so the widget holds no
-// text at all: with text inside, Chrome can put the local caret in the
-// widget when you click past the end of a line, and the next keystrokes
-// vanish into it.
-function flagCaret(user) {
-  const caret = el("span", "cr-caret");
-  caret.style.setProperty("--c", user.color);
-  caret.dataset.name = user.name || "Someone";
-  return caret;
-}
+/* ------------------------------------------------------------------ seed */
 
-/* --------------------------------------------------------------- toolbar */
-
-const COMMANDS = {
-  h2: (c) => c.toggleHeading({ level: 2 }),
-  h3: (c) => c.toggleHeading({ level: 3 }),
-  bold: (c) => c.toggleBold(),
-  italic: (c) => c.toggleItalic(),
-  strike: (c) => c.toggleStrike(),
-  code: (c) => c.toggleCode(),
-  bullet: (c) => c.toggleBulletList(),
-  ordered: (c) => c.toggleOrderedList(),
-  task: (c) => c.toggleTaskList(),
-  quote: (c) => c.toggleBlockquote(),
-  codeblock: (c) => c.toggleCodeBlock(),
-  undo: (c) => c.undo(),
-  redo: (c) => c.redo(),
-};
-
-const ACTIVE = {
-  h2: ["heading", { level: 2 }],
-  h3: ["heading", { level: 3 }],
-  bold: ["bold"],
-  italic: ["italic"],
-  strike: ["strike"],
-  code: ["code"],
-  link: ["link"],
-  bullet: ["bulletList"],
-  ordered: ["orderedList"],
-  task: ["taskList"],
-  quote: ["blockquote"],
-  codeblock: ["codeBlock"],
-};
-
-async function run(editor, cmd) {
-  if (cmd === "link") return editLink(editor);
-  const command = COMMANDS[cmd];
-  if (command) command(editor.chain().focus()).run();
-}
-
-async function editLink(editor) {
-  const current = editor.getAttributes("link").href || "";
-  const href = await promptDialog({
-    title: current ? "Edit link" : "Add a link",
-    label: "Address (leave empty to remove)",
-    value: current,
-    confirm: "Save link",
-    max: 2000,
-    placeholder: "https://",
-  });
-  const chain = editor.chain().focus().extendMarkRange("link");
-  if (href === null) {
-    if (current) chain.unsetLink().run();
-    return;
-  }
-  chain.setLink({ href }).run();
-}
-
-function paintToolbar(editor) {
-  const inTitle = editor.state.selection.$from.parent.type.name === "title";
-  for (const button of $("toolbar").querySelectorAll("[data-cmd]")) {
-    const cmd = button.dataset.cmd;
-    const active = ACTIVE[cmd] ? editor.isActive(...ACTIVE[cmd]) : false;
-    button.setAttribute("aria-pressed", active ? "true" : "false");
-    let enabled;
-    if (cmd === "link") enabled = !inTitle && !editor.state.selection.empty;
-    else if (cmd === "undo" || cmd === "redo") enabled = COMMANDS[cmd](editor.can().chain()).run();
-    else enabled = !inTitle && COMMANDS[cmd](editor.can().chain()).run();
-    button.disabled = !enabled;
+// Applies whichever seed this document's edits hang off. Until it is
+// applied they sit in Yjs's pending queue, waiting for the seed's client:
+// 0 for a document that started with a title line, 1 for one that didn't.
+// A document nobody has typed in yet gets the current seed. One whose seed
+// is already in the log (a compaction snapshot holds everything) needs none.
+function seed(ydoc) {
+  const pending = ydoc.store.pendingStructs;
+  const missing = pending ? pending.missing : new Map();
+  const empty = ydoc.getXmlFragment("default").length === 0;
+  if (missing.has(LEGACY_CLIENT)) Y.applyUpdate(ydoc, fromBase64(LEGACY_SEED), SEED);
+  if (missing.has(SEED_CLIENT) || (empty && !missing.has(LEGACY_CLIENT))) {
+    Y.applyUpdate(ydoc, fromBase64(SEED_UPDATE), SEED);
   }
 }
 
 /* ------------------------------------------------------------------ meta */
 
-// The title is the first line; the preview is the first few lines of body
-// text, which is what the grid prints on each card.
-function deriveMeta(doc) {
-  const first = doc.firstChild;
-  const title = first && first.type.name === "title" ? first.textContent.replace(/\s+/g, " ").trim() : "";
-  const lines = [];
-  let length = 0;
-  doc.forEach((node, offset, index) => {
-    if (index === 0 && node.type.name === "title") return;
-    if (lines.length >= 8 || length >= 400) return;
-    node.descendants((child) => {
-      if (lines.length >= 8 || length >= 400) return false;
-      if (!child.isTextblock) return true;
-      const text = child.textContent.replace(/\s+/g, " ").trim();
-      if (text) {
-        lines.push(text);
-        length += text.length;
-      }
-      return false;
-    });
-    if (node.isTextblock) {
-      const text = node.textContent.replace(/\s+/g, " ").trim();
-      if (text) {
-        lines.push(text);
-        length += text.length;
-      }
-    }
-  });
-  return { title: title.slice(0, 200), preview: lines.join("\n").slice(0, 400) };
+// The title is the document's name if someone set one, or else its first
+// line of text. The preview is the next few lines, which is what the grid
+// prints on each card.
+function deriveMeta(doc, name) {
+  const lines = textLines(doc, 9, 600);
+  const title = name || lines.shift() || "";
+  return { title: title.slice(0, MAX_TITLE), preview: lines.slice(0, 8).join("\n").slice(0, 400) };
 }
 
-function tooBig(data) {
-  if (!data) return false;
-  const size = (data.getData("text/html") || "").length + (data.getData("text/plain") || "").length;
-  if (size <= MAX_PASTE) return false;
-  toast("That's too much to paste at once. Try it in smaller pieces.", "error");
-  return true;
+function firstLine(doc) {
+  return (textLines(doc, 1, 1)[0] || "").slice(0, MAX_TITLE);
+}
+
+// The non-empty text blocks, in order, whitespace collapsed, until there
+// are `count` of them or `chars` characters.
+function textLines(doc, count, chars) {
+  const lines = [];
+  let length = 0;
+  doc.descendants((node) => {
+    if (lines.length >= count || length >= chars) return false;
+    if (!node.isTextblock) return true;
+    const text = node.textContent.replace(/\s+/g, " ").trim();
+    if (text) {
+      lines.push(text);
+      length += text.length;
+    }
+    return false;
+  });
+  return lines;
 }
