@@ -4,9 +4,9 @@
 -- the next deploy. IF NOT EXISTS makes that re-run harmless.
 --
 -- Document text is not here. Each document's content lives inside its
--- object as a log of CRDT updates, next to the live connections; the
+-- room as a log of CRDT updates, next to the live connections; the
 -- database only knows who belongs where, which documents exist, and a
--- title and preview the object writes back now and then.
+-- title and preview the room writes back now and then.
 --
 -- Times are milliseconds since the epoch, written by the service.
 

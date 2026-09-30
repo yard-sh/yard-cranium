@@ -54,7 +54,7 @@ const state = {
   docsFor: "", // which workspace state.docs belongs to
   sort: SORTS.includes(store.get("cranium.sort")) ? store.get("cranium.sort") : "edited",
   // Titles and previews seen in the editor, newer than the grid's copy: the
-  // object writes them to the database a few seconds after typing stops.
+  // room writes them to the database a few seconds after typing stops.
   local: new Map(),
   doc: null, // { id, abort, handle } for the open document
   loadedAt: 0,

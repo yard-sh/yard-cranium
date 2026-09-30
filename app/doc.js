@@ -28,7 +28,7 @@ const LEGACY_CLIENT = 0;
 // line of text.
 const NAME_KEY = "title";
 
-const MAX_TITLE = 200; // the object's limit too
+const MAX_TITLE = 200; // the room's limit too
 const META_DEBOUNCE_MS = 1500;
 const LOCAL_EDIT_WINDOW_MS = 30 * 1000;
 
@@ -130,7 +130,7 @@ export async function openDoc(docId, { signal, onMeta, onWorkspace } = {}) {
   $("doc-sheet").classList.remove("is-loading");
   $("doc-loading").hidden = true;
 
-  // Title and preview: shown here straight away, sent to the object (which
+  // Title and preview: shown here straight away, sent to the room (which
   // writes them to the grid) when this tab has been editing. A rename is a
   // change to the Y.Doc like any other, so it reaches everyone's top bar
   // the same way typing does.

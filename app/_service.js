@@ -9,12 +9,12 @@
 //
 // Two things live in this file. The default export is the fetch handler:
 // workspaces, members, invites, the document list, and the one route that
-// hands a WebSocket to a document. The Doc class is an object: one instance
-// per document, declared under "objects" in .yard/settings.json and reached
+// hands a WebSocket to a document. The Doc class is a room class: one room
+// per document, declared under "rooms" in .yard/settings.json and reached
 // through env.DOCS. It holds every open connection to that document and the
 // document's content, as an ordered log of Yjs updates.
 //
-// The object never parses Yjs. Updates are opaque base64 strings that it
+// The room never parses Yjs. Updates are opaque base64 strings that it
 // numbers, stores and relays; the CRDT lives in the browsers, which is what
 // lets this file stay one plain module with no bundler.
 
@@ -39,7 +39,7 @@ const MAX_PREVIEW = 400;
 // this cannot still be holding one. The five minutes cover clock skew.
 const SESSION_WINDOW_MS = 24 * 60 * 60 * 1000 + 5 * 60 * 1000;
 const KICK_LIMIT = 100;
-const FANOUT = 20; // object calls in flight at once
+const FANOUT = 20; // room calls in flight at once
 
 const FLUSH_MS = 5000;
 
@@ -52,7 +52,7 @@ const MAX_AWARENESS = 16 * 1024;
 const SYNC_CHUNK = 1024 * 1024;
 
 // Compaction: when the log past the last snapshot has more rows than this,
-// or more bytes than the snapshot itself (with a floor), the object asks a
+// or more bytes than the snapshot itself (with a floor), the room asks a
 // client for a fresh snapshot. CRANIUM_COMPACT_ROWS overrides the row count
 // (set it in .yard/dev/secrets.env to watch compaction happen locally).
 const COMPACT_ROWS = 400;
@@ -348,8 +348,8 @@ async function renameWorkspace(request, env, access) {
   return json(await workspaceDetail(env, { ...access, workspace: { ...access.workspace, name: clean } }));
 }
 
-// The rows go first, so nobody can open a document while its object is
-// being cleared; then every document's object drops its storage.
+// The rows go first, so nobody can open a document while its room is
+// being cleared; then every document's room drops its storage.
 async function deleteWorkspace(env, access) {
   const { workspace } = access;
   if (!access.is_owner) return ownerOnly();
@@ -628,7 +628,7 @@ async function deleteDoc(env, access) {
 // pages, so another site can't open one as a signed-in visitor.
 //
 // The X-Cranium-* headers are set here, after stripping anything a client
-// sent, so the object can trust them the way it trusts X-Yard-*.
+// sent, so the room can trust them the way it trusts X-Yard-*.
 async function connectDoc(request, env, me, access) {
   const { doc, user } = access;
   if (request.headers.get("Upgrade") !== "websocket") {
@@ -651,18 +651,18 @@ async function connectDoc(request, env, me, access) {
   headers.set("X-Cranium-Role", access.is_owner ? OWNER : MEMBER);
 
   log("ws.forward", { doc: shortId(doc.id), user: shortId(user) });
-  return objectFor(env, doc.id).fetch(new Request(request, { headers }));
+  return roomFor(env, doc.id).fetch(new Request(request, { headers }));
 }
 
-function objectFor(env, docId) {
+function roomFor(env, docId) {
   return env.DOCS.get(env.DOCS.idFromName(docId));
 }
 
-// Handler-to-object calls that are not upgrades. Clients cannot reach the
-// object directly, so paths under /__ are private by construction.
+// Handler-to-room calls that are not upgrades. Clients cannot reach the
+// room directly, so paths under /__ are private by construction.
 async function internal(env, docId, path, body) {
   try {
-    return await objectFor(env, docId).fetch("https://cranium.internal" + path, {
+    return await roomFor(env, docId).fetch("https://cranium.internal" + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
@@ -692,7 +692,7 @@ function ownerOnly() {
 //
 // The protocol, one JSON object per frame, with Yjs bytes as base64:
 //
-//   client → object                     object → client
+//   client → room                       room → client
 //   update    { id, u }                 hello     { cid, you, peers, head, floor }
 //   awareness { u }                     sync      { u: [..], to, done, reset? }
 //   meta      { title, preview }        ack       { id, seq }
@@ -715,7 +715,7 @@ export class Doc {
       this.createTables();
       this.meta = { ...freshMeta(), ...((await this.ctx.storage.get("meta")) || {}) };
       // The log is the truth for seq and the tail's size; meta is a cache of
-      // them that could lag if the object was retired mid-save.
+      // them that could lag if the room was retired mid-save.
       const tail = this.ctx.storage.sql
         .exec(
           "SELECT COALESCE(MAX(seq), 0) AS head, COUNT(*) AS n, COALESCE(SUM(size), 0) AS b FROM updates WHERE seq > ?",
@@ -804,7 +804,7 @@ export class Doc {
     });
 
     // since > head means this client has seen updates this log no longer
-    // holds: the storage was wiped (locally, yard dev --reset-objects). Send
+    // holds: the storage was wiped (locally, yard dev --reset-rooms). Send
     // everything and say so; the client uploads its whole state back.
     const reset = since > this.meta.seq;
     const from = reset || since < this.meta.floor ? -1 : since;
@@ -949,7 +949,7 @@ export class Doc {
   /* compaction */
 
   // The log grows by one row per burst of typing. Past a threshold, the
-  // object asks the socket that just wrote (alive, and caught up) for its
+  // room asks the socket that just wrote (alive, and caught up) for its
   // whole state. The socket delivers in order, so by the time the client
   // reads `compact` it has applied everything up to `upto`; it sends its
   // own unsent edits first, so the snapshot holds nothing the log won't.
@@ -970,7 +970,7 @@ export class Doc {
   // The snapshot replaces every row up to `upto`. It is written over row
   // `upto` first and the older rows deleted after, so a failure between the
   // two leaves duplicates (harmless: Yjs updates are idempotent), never a
-  // gap. Only the snapshot this object asked for, from the socket it asked,
+  // gap. Only the snapshot this room asked for, from the socket it asked,
   // is accepted.
   async snapshot(me, msg) {
     const m = this.meta;

@@ -11,14 +11,14 @@ decides who stays. The pieces:
 
 - **Frontend:** a static app with a vendored TipTap editor.
 - **CRDT:** a Yjs document in every browser.
-- **Backend:** one fetch handler, plus one realtime object per document.
+- **Backend:** one fetch handler, plus one realtime room per document.
 - **Storage:** a per-project SQLite database.
 - **Sign-in:** Yard Auth.
 - **Pricing:** one free tier.
 
 Use the button above, or paste this repository's URL into the **Create from
 GitHub URL** field of the Yard dashboard's Create Project dialog. Cranium
-declares objects (realtime rooms inside a service) and a custom landing page.
+declares rooms (realtime state inside a service) and a custom landing page.
 Both are part of Yard Pro, so creating it needs a Pro plan. The service is
 `authenticated`, so it also needs Yard Auth.
 
@@ -30,43 +30,43 @@ Once it's live:
 ## Layout
 
     .yard/
-      settings.json       every project setting: service, object class, landing page, pricing
+      settings.json       every project setting: service, room class, landing page, pricing
       migrations/         users, workspaces, members, documents, doc sessions
       landing-page/       the public page, with a live two-cursor demo
       dev/                local state written by yard dev; ignored by git
     app/                  the deployable bundle (the services[] entry with dir: app)
-      _service.js         the whole backend: the fetch handler and the Doc object
+      _service.js         the whole backend: the fetch handler and the Doc room class
       index.html          app shell: sidebar, views, dialogs
       app.js              boot, routing, workspace switcher, document grid, members, invites
       doc.js              one open document: connection, seed, presence, title and preview
       editing.js          the editor: schema, menu bar, toolbar, shortcuts, Markdown
-      sync.js             the connection between a Y.Doc and its object
+      sync.js             the connection between a Y.Doc and its room
       api.js · ui.js      fetch wrapper; DOM helpers, dialogs, colours
       styles.css          paper & graphite tokens, light and dark
       vendor/editor.js    GENERATED: TipTap + Yjs as one ES module (see below)
     vendor/               how app/vendor/editor.js is built; not deployed
 
-The service entry declares its mount, access mode, database, and object class:
+The service entry declares its mount, access mode, database, and room class:
 
     "services": [
       { "dir": "app", "name": "app", "url": "/app",
         "access": "authenticated", "database_access": true,
-        "objects": [{ "class": "Doc", "binding": "DOCS" }] }
+        "rooms": [{ "class": "Doc", "binding": "DOCS" }] }
     ]
 
 ## How it fits together
 
-**One document is one object.** `_service.js` exports a class called `Doc`.
+**One document is one room.** `_service.js` exports a class called `Doc`.
 
 - Yard keeps one instance of it per document, reached through `env.DOCS`.
 - Every connection to that document lands on that same instance.
 - The instance holds the open sockets and the document's content. The content
   sits in its own SQL storage and never goes into `env.DB`.
 
-**The CRDT lives in the browsers; the object is a log.**
+**The CRDT lives in the browsers; the room is a log.**
 
 - Each tab holds a Yjs document and sends its changes as Yjs updates.
-- The object doesn't parse them. It numbers each one (`seq`), stores it, acks
+- The room doesn't parse them. It numbers each one (`seq`), stores it, acks
   it to the sender, and relays it to everyone else.
 - Yjs updates can arrive in any order and more than once, so a relay is all a
   server needs to be. That's why `_service.js` stays one plain module with no
@@ -78,7 +78,7 @@ The service entry declares its mount, access mode, database, and object class:
 
 The protocol is one JSON object per frame, with Yjs bytes in base64:
 
-    client → object                     object → client
+    client → room                       room → client
     update    { id, u }                 hello     { cid, you, peers, head, floor }
     awareness { u }                     sync      { u: [..], to, done, reset? }
     meta      { title, preview }        ack       { id, seq } · update { seq, u }
@@ -92,15 +92,15 @@ the platform's 24-hour cap, and the client reconnects at once.
 
 1. The log grows by one row per burst of typing (tabs batch every 80 ms).
 2. Past 400 rows, or once the rows since the last snapshot outweigh it, the
-   object sends `compact { upto }` to the socket that just wrote. That socket
+   room sends `compact { upto }` to the socket that just wrote. That socket
    is alive and caught up.
 3. That tab first sends anything unsent, then its whole state.
-4. The object writes the snapshot over row `upto` and deletes the rows before
+4. The room writes the snapshot over row `upto` and deletes the rows before
    it.
 
 The socket delivers in order, so the snapshot holds everything up to `upto`.
 Writing before deleting means a failure between the two leaves duplicates,
-never a gap. Only the snapshot the object asked for, from the socket it
+never a gap. Only the snapshot the room asked for, from the socket it
 asked, is accepted.
 
 Members are trusted editors: a bogus snapshot can do no more than deleting
@@ -112,9 +112,9 @@ all the text, which any member can already do.
 - checks membership in the database,
 - notes that this person has the document open (a removal reads that),
 - strips any client-sent `X-Cranium-*` headers,
-- stamps trusted ones, and forwards the upgrade to the document's object.
+- stamps trusted ones, and forwards the upgrade to the document's room.
 
-The object trusts `X-Cranium-*` the way it trusts `X-Yard-*`. The edge honors
+The room trusts `X-Cranium-*` the way it trusts `X-Yard-*`. The edge honors
 the session only for requests from the project's own pages, so a socket
 opened from any other site arrives signed out and is turned away. A refused
 upgrade reaches the browser with no reason attached, so before reconnecting
@@ -131,7 +131,7 @@ the person was removed, and it stops trying.
   started from a different seed, with a title line; `seed()` in `doc.js`
   applies whichever one a document's edits hang off.
 - Tabs that are editing report the title and a preview.
-- The object writes them to the `documents` row from a 5-second alarm: one
+- The room writes them to the `documents` row from a 5-second alarm: one
   database write per burst, not per keystroke. That row is what the grid
   shows and sorts by.
 
@@ -160,7 +160,7 @@ know.
   from the workspace id. Resetting it kills every copy of the old link.
 - **Removal takes effect now.** The handler looks up the documents that person
   opened in the last day (a socket can't outlive 24 hours), and each of those
-  objects closes their sockets with 4003. The Remove
+  rooms closes their sockets with 4003. The Remove
   dialog also resets the invite link by default, since the old one would let
   them straight back in.
 
@@ -195,7 +195,7 @@ Two details worth knowing before editing:
 
 This serves the landing page at `http://localhost:9875/cranium/` and the app
 at `http://localhost:9875/cranium/app/`. The migration is applied to a local
-database, and document objects are stored under `.yard/dev/objects/`.
+database, and document rooms are stored under `.yard/dev/rooms/`.
 
 There is no sign-up screen and no login code in this repo: Yard Auth signs
 people in and hands the service trusted `X-Yard-*` headers. Locally, a
@@ -217,7 +217,7 @@ people in and hands the service trusted `X-Yard-*` headers. Locally, a
 Every save restarts the local runtime, which drops every open socket. The
 client reconnects on its own, the same way it does when a hosted session
 reaches its 24-hour limit. `yard dev --reset-db` starts from an empty database
-and `--reset-objects` deletes every stored document.
+and `--reset-rooms` deletes every stored document.
 
 ## Logging
 
@@ -240,7 +240,7 @@ Every line starts with `[cranium]` and is one event:
 - `doc.create|delete`
 - `ws.forward|rejected`
 
-**Object events:**
+**Room events:**
 
 - `doc.wake|full|tombstone|deleted`
 - `peer.join|leave|error`
@@ -253,7 +253,7 @@ Ids are cut to 8 characters.
 
 ## Usage and cost
 
-Objects are metered: requests, compute time while a message is handled, and
+Rooms are metered: requests, compute time while a message is handled, and
 stored bytes. An inbound socket message counts as one twentieth of a request,
 and a document that holds sockets but sees no activity costs no compute. So
 the client:
@@ -284,10 +284,10 @@ A sandbox has its own database and its own documents.
 
 ## Data lifecycle
 
-- **Deleting a document** removes its rows and tells its object to drop its
+- **Deleting a document** removes its rows and tells its room to drop its
   storage. A small tombstone stays behind, so a connection already on its way
   can't bring the document back.
 - **Deleting a workspace** does the same for every document in it.
 - **Removing the `Doc` class** from `settings.json` deletes every document's
   content at the next deploy.
-- **Removing the whole service** keeps object data for 30 days.
+- **Removing the whole service** keeps room data for 30 days.

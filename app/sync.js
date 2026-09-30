@@ -1,6 +1,6 @@
-// The connection between one Y.Doc in this tab and the document's object.
+// The connection between one Y.Doc in this tab and the document's room.
 //
-// The object is an ordered log: it numbers every update it receives (seq),
+// The room is an ordered log: it numbers every update it receives (seq),
 // stores it, acks it to the sender and relays it to everyone else. This
 // side keeps its own edits until they are acked, remembers the highest seq
 // it has applied (head), and reconnects with ?since=head so it only
@@ -26,7 +26,7 @@ export const SEED = Symbol("seed");
 
 const BATCH_MS = 80; // local edits are merged and sent at most this often
 const AWARENESS_MS = 60; // cursor moves, likewise
-const MAX_UPDATE = 1024 * 1024; // base64 characters; the object's limit too
+const MAX_UPDATE = 1024 * 1024; // base64 characters; the room's limit too
 const MAX_SNAPSHOT = 4 * 1024 * 1024;
 
 // Closes that mean "don't come back": reconnecting would only repeat them.
@@ -184,7 +184,7 @@ export function connectDoc(docId, ydoc, awareness, handlers = {}) {
       applyRemote(msg.u || []);
       head = msg.to;
       if (!msg.done) return;
-      // The object's log is behind this tab (its storage was wiped): hand
+      // The room's log is behind this tab (its storage was wiped): hand
       // it everything, and it becomes the log again.
       if (msg.reset) unsent.unshift(Y.encodeStateAsUpdate(ydoc));
       attempt = 0;
@@ -378,7 +378,7 @@ export function connectDoc(docId, ydoc, awareness, handlers = {}) {
     // Leaving the document: take this cursor off everyone's screen and
     // send what's pending. If edits are still unacked (a slow network, or
     // offline), keep the connection going in the background until the
-    // object has them, for up to a minute, instead of dropping them.
+    // room has them, for up to a minute, instead of dropping them.
     close() {
       h = {};
       if (stopped || draining) return finish();
