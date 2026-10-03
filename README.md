@@ -19,8 +19,8 @@ decides who stays. The pieces:
 Use the button above, or paste this repository's URL into the **Create from
 GitHub URL** field of the Yard dashboard's Create Project dialog. Cranium
 declares rooms (realtime state inside a service) and a custom landing page.
-Rooms are part of Yard Pro, so creating it needs a Pro plan. The service is
-`authenticated`, so it also needs Yard Auth.
+Rooms are part of Yard Basic and Pro, so creating it needs one of those plans.
+The service is `authenticated`, so it also needs Yard Auth.
 
 Once it's live:
 
