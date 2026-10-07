@@ -3,7 +3,8 @@
 // No ports, no listen(): Yard runs this as a fetch handler. Requests arrive
 // with the app path rooted at "/" and, for signed-in visitors, trusted
 // identity headers the edge verified:
-//   X-Yard-User-Id, X-Yard-Email, X-Yard-Entitlement, X-Yard-Tier, X-Yard-Sandbox
+//   X-Yard-User-Id, X-Yard-Email, X-Yard-Entitlement, X-Yard-Tier,
+//   X-Yard-Tier-Key, X-Yard-Sandbox
 // Clients can never spoof these: the edge strips inbound X-Yard-* first, and
 // `yard dev` stamps the same headers locally from the persona you pick.
 //
