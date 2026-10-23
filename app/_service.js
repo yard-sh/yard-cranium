@@ -10,10 +10,10 @@
 //
 // Two things live in this file. The default export is the fetch handler:
 // workspaces, members, invites, the document list, and the one route that
-// hands a WebSocket to a document. The Doc class is a room class: one room
-// per document, declared under "rooms" in .yard/settings.json and reached
-// through env.DOCS. It holds every open connection to that document and the
-// document's content, as an ordered log of Yjs updates.
+// hands a WebSocket to a document. The Doc class implements the Doc room
+// type: one room per document, declared under "rooms" in .yard/settings.json
+// and reached through env.DOCS. It holds every open connection to that
+// document and the document's content, as an ordered log of Yjs updates.
 //
 // The room never parses Yjs. Updates are opaque base64 strings that it
 // numbers, stores and relays; the CRDT lives in the browsers, which is what

@@ -30,12 +30,12 @@ Once it's live:
 ## Layout
 
     .yard/
-      settings.json       every project setting: service, room class, landing page, pricing
+      settings.json       every project setting: service, room type, landing page, pricing
       migrations/         users, workspaces, members, documents, doc sessions
       landing-page/       the public page, with a live two-cursor demo
       dev/                local state written by yard dev; ignored by git
     app/                  the deployable bundle (the services[] entry with dir: app)
-      _service.js         the whole backend: the fetch handler and the Doc room class
+      _service.js         the whole backend: the fetch handler and the Doc room type
       index.html          app shell: sidebar, views, dialogs
       app.js              boot, routing, workspace switcher, document grid, members, invites
       doc.js              one open document: connection, seed, presence, title and preview
@@ -46,12 +46,12 @@ Once it's live:
       vendor/editor.js    GENERATED: TipTap + Yjs as one ES module (see below)
     vendor/               how app/vendor/editor.js is built; not deployed
 
-The service entry declares its mount, access mode, database, and room class:
+The service entry declares its mount, access mode, database, and room type:
 
     "services": [
       { "dir": "app", "name": "app", "url": "/app",
         "access": "authenticated", "database_access": true,
-        "rooms": [{ "class": "Doc", "binding": "DOCS" }] }
+        "rooms": [{ "type": "Doc", "binding": "DOCS" }] }
     ]
 
 ## How it fits together
@@ -185,7 +185,7 @@ Two details worth knowing before editing:
 - **Relative URLs only.** The app is mounted at `/<slug>/app/`, so it uses
   `fetch("api/docs")`, never `/api/docs`. Routes live in `location.hash`, and
   the socket URL is built from `location.href`.
-- **The class name is the identity.** Renaming `Doc` in `settings.json`
+- **The type name is the identity.** Renaming `Doc` in `settings.json`
   deletes every document's content on the next deploy; `yard push` warns
   before it does. Change the `binding` if only the name in `env` should change.
 
@@ -288,6 +288,6 @@ A sandbox has its own database and its own documents.
   storage. A small tombstone stays behind, so a connection already on its way
   can't bring the document back.
 - **Deleting a workspace** does the same for every document in it.
-- **Removing the `Doc` class** from `settings.json` deletes every document's
+- **Removing the `Doc` room type** from `settings.json` deletes every document's
   content at the next deploy.
 - **Removing the whole service** keeps room data for 30 days.

@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "project_slug": "cranium",
   "ignore_files": [],
   "services": [
@@ -11,7 +11,7 @@
       "database_access": true,
       "rooms": [
         {
-          "class": "Doc",
+          "type": "Doc",
           "binding": "DOCS"
         }
       ]
