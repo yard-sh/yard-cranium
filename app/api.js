@@ -15,9 +15,6 @@ export async function api(path, { method = "GET", body } = {}) {
   const init = {
     method,
     credentials: "same-origin",
-    // A lapsed session makes the edge redirect to sign-in on another origin.
-    // Following it would fail as a CORS error; stopping at it tells us why.
-    redirect: "manual",
     headers: { Accept: "application/json" },
   };
   if (method !== "GET") {
@@ -31,7 +28,8 @@ export async function api(path, { method = "GET", body } = {}) {
   } catch {
     throw new ApiError("You look offline. Try again in a moment.", 0, "offline");
   }
-  if (res.type === "opaqueredirect" || !(res.headers.get("Content-Type") || "").includes("application/json")) {
+  // The edge answers a request from a lapsed session with a 401.
+  if (res.status === 401) {
     throw new ApiError("Your session ended. Signing you back in…", 401, "signed_out");
   }
   const data = await res.json().catch(() => ({}));
