@@ -203,7 +203,7 @@ people in and hands the service trusted `X-Yard-*` headers. Locally, a
 
 | Persona     | Who they are                  |
 | ----------- | ----------------------------- |
-| `member`    | you, the project owner        |
+| `team`      | you, a team member            |
 | `signed-in` | someone who just signed in    |
 | `user:free` | someone on the Free tier      |
 

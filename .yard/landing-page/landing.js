@@ -108,7 +108,7 @@
         el("div", {}, [
           el("p", { class: "menu__name", text: who.name }),
           who.email ? el("p", { class: "menu__sub", text: who.email }) : null,
-          who.entitlement === "owner" ? el("p", { class: "menu__sub", text: "Project owner" }) : null,
+          who.entitlement === "team" ? el("p", { class: "menu__sub", text: "Team member" }) : null,
         ]),
       ]),
       el("a", { class: "menu__item", role: "menuitem", href: APP, text: "Open Cranium" }),
