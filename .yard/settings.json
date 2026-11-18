@@ -18,7 +18,6 @@
     }
   ],
   "landing_page": {
-    "type": "custom",
     "dir": ".yard/landing-page"
   },
   "pricing": {
