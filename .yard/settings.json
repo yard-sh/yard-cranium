@@ -1,8 +1,13 @@
 {
-  "version": 9,
+  "version": 10,
   "project_slug": "cranium",
   "ignore_files": [],
   "services": [
+    {
+      "dir": ".yard/landing-page",
+      "name": "landing-page",
+      "url": "/"
+    },
     {
       "dir": "app",
       "name": "app",
@@ -17,9 +22,6 @@
       ]
     }
   ],
-  "landing_page": {
-    "dir": ".yard/landing-page"
-  },
   "pricing": {
     "tiers": [
       {
